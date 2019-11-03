@@ -1,74 +1,81 @@
-var fs = require('fs')
-var path = require('path')
-var crypto = require('crypto')
-var _ = require('underscore')
-var handlebars = require('handlebars')
-var urlJoin = require('url-join')
+const { createHash } = require('crypto');
+const { readFileSync } = require('fs');
+const { compile } = require('handlebars');
+const { EOL } = require('os');
+const urlJoin = require('url-join');
 
 /** Caclulates hash based on options and source SVG files */
-var calcHash = function(options) {
-	var hash = crypto.createHash('md5')
-	options.files.forEach(function(file) {
-		hash.update(fs.readFileSync(file, 'utf8'))
-	})
-	hash.update(JSON.stringify(options))
-	return hash.digest('hex')
+function calcHash(options) {
+	const hash = createHash('md5');
+	options.files.forEach(file => {
+		hash.update(readFileSync(file, 'utf8'));
+	});
+	hash.update(JSON.stringify(options));
+	return hash.digest('hex');
 }
 
-var makeUrls = function(options) {
-	var hash = calcHash(options)
-	var baseUrl = options.cssFontsUrl && options.cssFontsUrl.replace(/\\/g, '/')
-	var urls = _.map(options.types, function(type) {
-		var fontName = options.fontName + '.' + type + '?' + hash
-		return baseUrl ? urlJoin(baseUrl, fontName) : fontName
-	})
-	return _.object(options.types, urls)
-}
+function makeUrls(options) {
+	const hash = calcHash(options);
+	const baseUrl = options.cssFontsUrl && options.cssFontsUrl.replace(/\\/g, '/');
+	const result = {};
 
+	for (let type of options.types) {
+		const fontName = options.fontName + '.' + type + '?' + hash;
+		const url = baseUrl ? urlJoin(baseUrl, fontName) : fontName;
 
-var makeSrc = function(options, urls) {
-	var templates = {
-		eot: _.template('url("<%= url %>?#iefix") format("embedded-opentype")'),
-		woff2: _.template('url("<%= url %>") format("woff2")'),
-		woff: _.template('url("<%= url %>") format("woff")'),
-		ttf: _.template('url("<%= url %>") format("truetype")'),
-		svg: _.template('url("<%= url %>#<%= fontName %>") format("svg")')
+		result[type] = url;
 	}
 
-	// Order used types according to 'options.order'.
-	var orderedTypes = _.filter(options.order, function(type) {
-		return options.types.indexOf(type) !== -1
-	})
-
-	var src = _.map(orderedTypes, function(type) {
-		return templates[type]({
-			url: urls[type],
-			fontName: options.fontName
-		})
-	}).join(',\n')
-
-	return src
+	return result;
 }
 
-var makeCtx = function(options, urls) {
-	// Transform codepoints to hex strings
-	var codepoints = _.object(_.map(options.codepoints, function(codepoint, name) {
-		return [name, codepoint.toString(16)]
-	}))
+function buildSrcForType(type, url, fontName) {
+	switch (type) {
+		case 'eot':
+			return `url("${url}?#iefix") format("embedded-opentype")`;
+		case 'woff2':
+			return `url("${url}") format("woff2")`;
+		case 'woff':
+			return `url("${url}") format("woff")`;
+		case 'ttf':
+			return `url("${url}") format("truetype")`;
+		case 'svg':
+			return `url("${url}#${fontName}") format("svg")`;
+	}
+}
 
-	return _.extend({
+var makeSrc = function (options, urls) {
+	// Order used types according to 'options.order'.
+	const existingTypes = options.order.filter(type => options.types.indexOf(type) !== -1);
+
+	return existingTypes.map(type => buildSrcForType(type, urls[type], options.fontName)).join(',' + EOL);
+}
+
+function makeCtx(options, urls) {
+	// Transform codepoints to hex strings
+	const codePoints = {};
+
+	for (let [codepoint, name] of Object.entries(options.codepoints)) {
+		codePoints[codepoint] = name.toString(16);
+	}
+
+	return Object.assign({
 		fontName: options.fontName,
 		src: makeSrc(options, urls),
-		codepoints: codepoints
-	}, options.templateOptions)
+		codepoints: codePoints,
+	}, options.templateOptions);
 }
 
-var renderCss = function(options, urls) {
-	if (typeof urls === 'undefined') urls = makeUrls(options)
-	var ctx = makeCtx(options, urls)
-	var source = fs.readFileSync(options.cssTemplate, 'utf8')
-	var template = handlebars.compile(source)
-	return template(ctx)
+function renderCss(options, urls) {
+	if (typeof urls === 'undefined') {
+		urls = makeUrls(options);
+	}
+
+	const ctx = makeCtx(options, urls);
+	const source = readFileSync(options.cssTemplate, 'utf8');
+	const template = compile(source);
+
+	return template(ctx);
 }
 
-module.exports = renderCss
+module.exports = renderCss;

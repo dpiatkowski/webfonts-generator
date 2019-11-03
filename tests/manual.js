@@ -1,22 +1,23 @@
-var fs = require('fs')
-var path = require('path')
-var _ = require('underscore')
+const { readdirSync } = require('fs');
+const { join } = require('path');
+const webfontsGenerator = require('../src/index');
 
-var webfontsGenerator = require('../src/index')
+const SRC = join(__dirname, 'src');
 
-var SRC = path.join(__dirname, 'src')
-var FILES = _.map(fs.readdirSync(SRC), function(file) {
-	return path.join(SRC, file)
-})
-var OPTIONS = {
-	dest: path.join(__dirname, '..', 'temp'),
+const FILES = readdirSync(SRC).map(file => join(SRC, file));
+
+const OPTIONS = {
+	dest: join(__dirname, '..', 'temp'),
 	files: FILES,
 	fontName: 'fontName',
 	types: ['svg', 'ttf', 'woff', 'woff2', 'eot'],
-	html:  true
-}
+	html: true
+};
 
-webfontsGenerator(OPTIONS, function(error) {
-	if (error) console.log('Fail!', error)
-	else console.log('Done!')
-})
+webfontsGenerator(OPTIONS, function (error) {
+	if (error) {
+		console.log('Fail!', error);
+	} else {
+		console.log('Done!');
+	}
+});
